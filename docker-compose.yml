@@ -1,0 +1,5 @@
+services:
+  sakhi-voice:
+    build: .
+    ports:
+      - "8080:80"

@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sakhi Voice</title>
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fbf7f0;--card:#fff;--tx:#1f2a2e;--mu:#5d6a70;--pr:#0f766e;--prt:#fff;--bd:#e3dccf;--red:#b42318;--redbg:#fde8e6;--ok:#e3f4ef;color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#13191b;--card:#1c2528;--tx:#eef2f3;--mu:#a3b0b5;--pr:#2dd4bf;--prt:#06201c;--bd:#2f3b3f;--red:#ffb4a9;--redbg:#41201c;--ok:#15332e;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#13191b;--card:#1c2528;--tx:#eef2f3;--mu:#a3b0b5;--pr:#2dd4bf;--prt:#06201c;--bd:#2f3b3f;--red:#ffb4a9;--redbg:#41201c;--ok:#15332e;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:18px/1.45 system-ui,"Noto Sans","Noto Sans Devanagari","Noto Sans Telugu",sans-serif}
+main{max-width:560px;margin:0 auto;padding:16px}
+h1{font-size:24px;margin:4px 0}h2{font-size:18px;margin:20px 0 8px}
+.sub{color:var(--mu);font-size:15px;margin:0 0 12px}
+select,input,button{font:inherit}
+select,input{width:100%;padding:12px;border-radius:12px;border:2px solid var(--bd);background:var(--card);color:var(--tx)}
+.mic{display:block;margin:18px auto;width:132px;height:132px;border-radius:50%;border:0;background:var(--pr);color:var(--prt);font-size:52px;cursor:pointer;box-shadow:0 6px 18px rgba(0,0,0,.2)}
+.mic.on{animation:p 1s infinite}@keyframes p{50%{transform:scale(1.07)}}
+.status{text-align:center;font-weight:600;min-height:28px}
+.card{background:var(--card);border:2px solid var(--bd);border-radius:16px;padding:14px;margin:10px 0}
+.alert{background:var(--redbg);color:var(--red);border-color:var(--red);font-weight:600}
+.row{display:flex;gap:8px;margin-top:8px}
+.btn{flex:1;padding:14px;border-radius:12px;border:2px solid var(--pr);background:var(--card);color:var(--tx);cursor:pointer;font-weight:600}
+.btn.p{background:var(--pr);color:var(--prt)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{padding:8px 10px;border-radius:20px;border:1px solid var(--bd);background:var(--card);color:var(--tx);font-size:14px;cursor:pointer}
+dl{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:0}dt{color:var(--mu)}dd{margin:0;font-weight:600}
+.tw{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:14px}th,td{border:1px solid var(--bd);padding:6px;text-align:left;white-space:nowrap}
+.badge{font-size:13px;background:var(--ok);padding:2px 8px;border-radius:10px}
+</style></head><body><main>
+<h1>🩺 Sakhi Voice</h1>
+<p class="sub">Speak your home-visit note. Sakhi fills the register.</p>
+<select id="lang" aria-label="Language"><option value="hi">हिन्दी (Hindi)</option><option value="te">తెలుగు (Telugu)</option><option value="mr">मराठी (Marathi)</option><option value="en">English</option></select>
+<button class="mic" id="mic" aria-label="Speak">🎤</button>
+<div class="status" id="st">Tap the mic to start</div>
+<div id="live" class="sub" style="text-align:center"></div>
+<div id="out"></div>
+<div class="row"><input id="tx" placeholder="Type instead…"><button class="btn p" id="send" style="flex:0 0 auto">Send</button></div>
+<p class="sub" style="margin-top:12px">No mic? Tap an example:</p>
+<div class="chips" id="ex"></div>
+<h2>Saved visits <span class="badge" id="sync"></span></h2>
+<div id="list"></div>
+<h2>Mock government register</h2>
+<div class="tw"><table id="reg"></table></div>
+<p class="sub">Prototype. Uses your browser’s speech recognition and voice. Not for real patient data.</p>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+const BCP={hi:'hi-IN',te:'te-IN',mr:'mr-IN',en:'en-IN'};
+const EX=["Sunita Devi, 8 mahine ki pregnant, BP dedh sau by sau tha, iron ki goli di, agle hafte dobara jaana hai","Lakshmi, 5 months pregnant, BP 110/70, calcium tablet given, next visit in 15 din","Meena ka navjat baby, bukhar hai, kal dobara aana hai","Radha, 7 mahine, khoon aa raha hai, vaccine chhut gaya"];
+const W={ek:1,do:2,teen:3,char:4,paanch:5,chhe:6,saat:7,aath:8,nau:9,das:10};
+const T={
+en:{greet:"Namaste. Tell me about the visit: name, and what you found.",askName:"Whose visit is this?",retry:"I couldn’t hear clearly. Please say that again, closer to the phone.",q:"Is this correct?",saved:"Saved. Next visit?",
+ sum:r=>`${r.name}.${r.months?` ${r.months} months pregnant.`:''}${r.bp?` BP ${r.bp}.`:''}${r.meds.length?` ${r.meds.join(', ')} given.`:''}${r.next?` Next visit in ${r.next} days.`:''}`,
+ alert:r=>`Warning: ${r.flags.join(', ')}. Please refer to the health centre today.`},
+hi:{greet:"नमस्ते। विज़िट के बारे में बताइए: नाम, और क्या पाया।",askName:"यह किसकी विज़िट है?",retry:"ठीक से सुनाई नहीं दिया। फ़ोन के पास आकर फिर बोलिए।",q:"क्या यह सही है?",saved:"सेव हो गया। अगली विज़िट?",
+ sum:r=>`${r.name}।${r.months?` ${r.months} महीने की गर्भवती।`:''}${r.bp?` बीपी ${r.bp}।`:''}${r.meds.length?` ${r.meds.join(', ')} दी गई।`:''}${r.next?` अगली विज़िट ${r.next} दिन में।`:''}`,
+ alert:r=>`चेतावनी: ${r.flags.join(', ')}। कृपया आज ही स्वास्थ्य केंद्र रेफ़र करें।`},
+te:{greet:"నమస్తే. సందర్శన గురించి చెప్పండి: పేరు, మీరు ఏమి గమనించారు.",askName:"ఇది ఎవరి సందర్శన?",retry:"సరిగా వినిపించలేదు. ఫోన్ దగ్గరగా మళ్ళీ చెప్పండి.",q:"ఇది సరైనదేనా?",saved:"సేవ్ అయింది. తదుపరి సందర్శన?",
+ sum:r=>`${r.name}.${r.months?` ${r.months} నెలల గర్భిణి.`:''}${r.bp?` బీపీ ${r.bp}.`:''}${r.meds.length?` ${r.meds.join(', ')} ఇచ్చారు.`:''}${r.next?` తదుపరి సందర్శన ${r.next} రోజుల్లో.`:''}`,
+ alert:r=>`హెచ్చరిక: ${r.flags.join(', ')}. దయచేసి ఈ రోజే ఆరోగ్య కేంద్రానికి పంపండి.`},
+mr:{greet:"नमस्कार. भेटीबद्दल सांगा: नाव, आणि काय आढळले.",askName:"ही कोणाची भेट आहे?",retry:"नीट ऐकू आले नाही. फोनजवळ येऊन पुन्हा बोला.",q:"हे बरोबर आहे का?",saved:"सेव्ह झाले. पुढची भेट?",
+ sum:r=>`${r.name}.${r.months?` ${r.months} महिन्यांची गर्भवती.`:''}${r.bp?` बीपी ${r.bp}.`:''}${r.meds.length?` ${r.meds.join(', ')} दिले.`:''}${r.next?` पुढची भेट ${r.next} दिवसांत.`:''}`,
+ alert:r=>`इशारा: ${r.flags.join(', ')}. कृपया आजच आरोग्य केंद्रात पाठवा.`}};
+let stage='idle',rec=null,cur=null,saved=[];
+try{saved=JSON.parse(localStorage.getItem('sakhi')||'[]')}catch(e){}
+const L=()=>$('lang').value;
+function norm(s){s=s.toLowerCase().replace(/[०-९]/g,d=>'०१२३४५६७८९'.indexOf(d));
+ s=s.replace(/dedh\s*sau/g,'150').replace(/ek\s*sau\s*das|एक सौ दस/g,'110').replace(/(by|बाय)\s*sau/g,'/100').replace(/डेढ़?\s*सौ/g,'150');return s}
+function parse(raw){
+ const s=norm(raw),r={name:'',months:0,bp:'',meds:[],next:0,flags:[]};
+ const first=raw.split(/[,.।]/)[0].trim();
+ if(first&&!/\d|mahin|month|bp|pregnan|baby|bukhar|fever|khoon|vaccine/i.test(first)&&first.split(/\s+/).length<=3)r.name=first;
+ else{const m=raw.match(/^([\p{L}]+(?:\s+(?:devi|bai|kumari|[A-Z][a-z]+))?)\s+(?:ka|ki|ke|has|is)\b/iu);if(m)r.name=m[1]}
+ let m=s.match(/(\d{1,2})\s*(?:mahin|month|माह|महीन|నెల|महिन)/);
+ if(m)r.months=+m[1];else{m=s.match(/\b(ek|do|teen|char|paanch|chhe|saat|aath|nau|das)\s*mahin/);if(m)r.months=W[m[1]]}
+ m=s.match(/(\d{2,3})\s*(?:\/|by|बाय)\s*(\d{2,3})/);if(m)r.bp=m[1]+'/'+m[2];
+ const D=[[/iron|आयरन|goli|गोली/,'Iron tablets'],[/calcium|कैल्शियम/,'Calcium'],[/folic/,'Folic acid'],[/\bors\b/,'ORS'],[/vitamin\s*a/,'Vitamin A'],[/paracetamol/,'Paracetamol']];
+ D.forEach(([x,n])=>{if(x.test(s))r.meds.push(n)});
+ if(/agle hafte|next week|अगले हफ्ते|వచ్చే వారం|पुढच्या आठवड्यात/.test(s))r.next=7;
+ else if(/\bkal\b|tomorrow|कल|రేపు|उद्या/.test(s))r.next=1;
+ else if(/parso|परसों/.test(s))r.next=2;
+ else{m=s.match(/(\d{1,2})\s*(?:din|days?|दिन)/);if(m)r.next=+m[1]}
+ if(r.bp){const[a,b]=r.bp.split('/').map(Number);if(a>=140||b>=90)r.flags.push('high BP')}
+ else if(/bp\s*(zyada|high)|बीपी\s*ज्यादा|high bp/.test(s))r.flags.push('high BP');
+ if(/khoon|bleeding|ख़ून|खून|రక్తస్రావం/.test(s))r.flags.push('bleeding');
+ if(/(bukhar|fever|बुखार|జ్వరం)/.test(s)&&/(navjat|newborn|baby|नवजात|పసిబిడ్డ)/.test(s))r.flags.push('fever in newborn');
+ if(/vaccine\s*(chhut|miss)|tika\s*nahi|missed vaccine|चूक/.test(s))r.flags.push('missed vaccine');
+ if(/weight\s*kam|low weight|वज़न कम|वजन कम/.test(s))r.flags.push('low weight');
+ return r}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function say(t){return new Promise(res=>{$('st').textContent='🔊 '+t;if(!window.speechSynthesis)return sleep(900).then(res);
+ speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang=BCP[L()];u.rate=.9;u.onend=res;u.onerror=res;speechSynthesis.speak(u);setTimeout(res,12000)})}
+function listen(){return new Promise(res=>{
+ if(!SR){$('st').textContent='Speech not supported here. Type or tap an example.';return res(null)}
+ rec=new SR();rec.lang=BCP[L()];rec.interimResults=true;rec.continuous=false;let fin='';
+ $('mic').classList.add('on');$('st').textContent='🎤 Listening…';
+ rec.onresult=e=>{let t='';for(const x of e.results){t+=x[0].transcript;if(x.isFinal)fin=t}$('live').textContent=t};
+ rec.onerror=()=>{};rec.onend=()=>{$('mic').classList.remove('on');res(fin||$('live').textContent||null)};
+ try{rec.start()}catch(e){res(null)}})}
+function show(r){
+ const rows=[['Name',r.name||'?'],['Pregnancy',r.months?r.months+' months':'-'],['BP',r.bp||'-'],['Medicines',r.meds.join(', ')||'-'],['Next visit',r.next?'in '+r.next+' days':'-'],['Referral',r.flags.length?'YES':'No']];
+ $('out').innerHTML=`<div class="card"><dl>${rows.map(x=>`<dt>${x[0]}</dt><dd>${x[1]}</dd>`).join('')}</dl></div>`+(r.flags.length?`<div class="card alert">⚠️ ${T[L()].alert(r)}</div>`:'')}
+async function handle(text){
+ if(!text||text.trim().length<3){await say(T[L()].retry);return stage='idle'}
+ $('live').textContent=text;
+ if(stage==='name'){cur.name=text.trim().split(/[,.]/)[0];return confirm()}
+ if(stage==='confirm'){
+  if(/^(haan|han|ha|haa|yes|yeah|ok|okay|correct|sahi|theek|हाँ|हां|सही|ठीक|అవును|సరే|हो|बरोबर)\b/i.test(text.trim()))return save();
+  const n=parse(text);for(const k of['months','bp','next'])if(n[k])cur[k]=n[k];
+  if(n.name&&!/^(nahi|no|नहीं)/i.test(n.name))cur.name=n.name;
+  n.meds.forEach(x=>{if(!cur.meds.includes(x))cur.meds.push(x)});n.flags.forEach(x=>{if(!cur.flags.includes(x))cur.flags.push(x)});
+  return confirm()}
+ cur=parse(text);
+ if(!cur.name){stage='name';show(cur);await say(T[L()].askName);return next()}
+ return confirm()}
+async function confirm(){stage='confirm';show(cur);await say(T[L()].sum(cur)+(cur.flags.length?' '+T[L()].alert(cur):'')+' '+T[L()].q);return next()}
+async function save(){cur.t=new Date().toLocaleString('en-IN');saved.unshift(cur);
+ try{localStorage.setItem('sakhi',JSON.stringify(saved))}catch(e){}
+ render();stage='idle';$('out').innerHTML='<div class="card">✅ Saved</div>';await say(T[L()].saved)}
+async function next(){const t=await listen();if(t!==null)handle(t);else if(!SR)stage=stage}
+function render(){
+ $('sync').textContent=navigator.onLine?'':'Will sync later';
+ $('list').innerHTML=saved.length?saved.map(r=>`<div class="card ${r.flags.length?'alert':''}"><b>${r.name}</b> · ${r.t}<br>${r.months?r.months+' mo · ':''}${r.bp?'BP '+r.bp+' · ':''}${r.meds.join(', ')}${r.flags.length?'<br>⚠️ '+r.flags.join(', '):''}</div>`).join(''):'<p class="sub">No visits yet.</p>';
+ $('reg').innerHTML='<tr><th>#</th><th>Name</th><th>Months</th><th>BP</th><th>Medicines</th><th>Next visit</th><th>Referred</th></tr>'+saved.map((r,i)=>`<tr><td>${i+1}</td><td>${r.name}</td><td>${r.months||'-'}</td><td>${r.bp||'-'}</td><td>${r.meds.join(', ')||'-'}</td><td>${r.next?r.next+' d':'-'}</td><td>${r.flags.length?'Yes':'No'}</td></tr>`).join('')}
+$('mic').onclick=async()=>{speechSynthesis&&speechSynthesis.cancel();rec&&rec.abort&&rec.abort();stage='idle';cur=null;$('out').innerHTML='';$('live').textContent='';await say(T[L()].greet);next()};
+$('send').onclick=()=>{const v=$('tx').value;$('tx').value='';if(stage==='idle')cur=null;handle(v)};
+$('tx').onkeydown=e=>{if(e.key==='Enter')$('send').click()};
+EX.forEach(x=>{const b=document.createElement('button');b.className='chip';b.textContent=x.split(',')[0]+'…';b.onclick=()=>{stage='idle';cur=null;handle(x)};$('ex').appendChild(b)});
+window.addEventListener('online',render);window.addEventListener('offline',render);render();
+</script></body></html>
